@@ -1,0 +1,18 @@
+# Data formatting and visualization
+pandas==2.2.2
+matplotlib==3.8.4
+numpy==1.26.4
+
+# Data Scraping
+beautifulsoup4==4.12.3
+requests==2.31.0
+
+# Database Connection
+sqlalchemy==2.0.29
+mysqlclient==2.2.4
+
+# Models
+scikit-learn==1.5.0
+
+# Scheduler
+apache-airflow==2.10.0

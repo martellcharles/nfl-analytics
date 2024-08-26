@@ -1,0 +1,63 @@
+services:
+
+  backend:
+    build: ./backend
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - database
+    environment:
+      - NODE_ENV=development
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+    depends_on:
+      - backend
+  
+  database:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=password
+      - MYSQL_DATABASE=nfl_db
+      - MYSQL_USER=charlie
+      - MYSQL_PASSWORD=password1
+    ports:
+      - "3307:3306"
+    volumes:
+      - ./mysql-data:/var/lib/mysql
+      - ./initial-data.sql:/initial-data/initial-data.sql
+
+  airflow-webserver:
+    image: apache/airflow:2.3.0
+    depends_on:
+      - database
+    environment:
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=mysql+mysqlconnector://charlie:password1@database:3306/nfl_db
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./plugins:/opt/airflow/plugins
+    ports:
+      - "8080:8080"
+    command: webserver
+
+  airflow-scheduler:
+    image: apache/airflow:2.3.0
+    depends_on:
+      - airflow-webserver
+    environment:
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=mysql+mysqlconnector://charlie:password1@database:3306/nfl_db
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./plugins:/opt/airflow/plugins
+    command: scheduler
+
+volumes:
+  mysql-data:

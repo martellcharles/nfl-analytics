@@ -1,88 +1,14 @@
 """
-This module provides functions for uploading the cleaned data  to the database.
+This module provides functions for uploading the cleaned player data to the database.
 """
 
 import pandas as pd
 import numpy as np
 import configparser
-from database_models import *
+from sources.dags.databaseModels import *
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import pickle
-
-def fix_snap_cols(df: pd.DataFrame, col_names: list) -> None:
-    """
-    Fixes the columns that track the snap num/percentage stats.
-
-    Args:
-        games_df (pandas df): dataframe of stats per player per game.
-        col_names (list): Dataframe of stats per player per game as well as snap columns to be fixed.
-
-    Returns:
-        Nothing, the dataframe is edited in place and is called in the clean_games function. 
-    """
-    for tup in col_names:
-        if tup[1] == 'Num':
-            for idx in range(len(df)):
-                try:
-                    df.loc[idx, tup] = float(df.loc[idx, tup])
-                except:
-                    df.loc[idx, tup] = np.nan
-        else:
-            for idx in range(len(df)):
-                if pd.isna(df.loc[idx, tup]):
-                    continue
-                if df.loc[idx, tup][-1] == '%':
-                    df.loc[idx, tup] = float(df.loc[idx, tup][:-1]) / 100
-                else:
-                    df.loc[idx, tup] = np.nan
-
-# occasionally a player will have two rows of data for the same week, we need to make changes to this function to
-# ensure that we clean those up
-
-def clean_games(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Cleans the dataframe of game stats scraped from pro-football-reference.com.
-
-    Args:
-        games_df (pandas): Dataframe of stats per player per game.
-
-    Returns:
-        Nothing, the dataframe is edited in place and saves dataframe in local directory as 'games.csv'. 
-    """
-    df.loc[:,('Game Info','Tm')] = [team.lower() if type(team)==str else np.nan for team in df['Game Info']['Tm']]
-    df.loc[:,('Game Info','Opp')] = [opp.lower() if type(opp)==str else np.nan for opp in df['Game Info']['Opp']]
-    for stat in ['Passing', 'Rushing', 'Receiving', 'Fumbles', 'Scoring']:
-        for col in df[stat].columns:
-            df[(stat,col)] = pd.to_numeric(df[(stat,col)], errors='coerce')
-    fix_snap_cols(df, [('Off. Snaps', 'Num'), ('Off. Snaps', 'Pct'), ('ST Snaps', 'Num'), ('ST Snaps', 'Pct'), 
-                       ('Def. Snaps', 'Num'), ('Def. Snaps', 'Pct')])
-    drop = []
-    for idx in range(1,len(df)):
-        if df.loc[idx, ('Game Info', 'Week')] == df.loc[idx-1,('Game Info', 'Week')]:
-            drop.append(idx)
-    df.drop(drop, inplace=True)
-    df.reset_index(drop=True, inplace=True)
-    for player in df[('Player Info', 'Name')].unique():
-        indices = df.loc[df[('Player Info', 'Name')] == player,:].index
-        drop = []
-        for i,idx in enumerate(indices):
-            if 'Games' in df.loc[idx,('Game Info', 'Date')]:
-                i+=1
-                drop = [j for j in indices[i:]]
-                break
-            elif df.loc[idx, ('Game Info', 'Week')] == df.loc[indices[i-1],('Game Info', 'Week')] and len(indices) > 1:
-                drop = [indices[i-1]]
-                break
-        try:
-            df.drop(drop, inplace=True)
-            df.reset_index(drop=True, inplace=True)
-        except:
-            raise RuntimeError(player + " failed!")
-    # df.drop(drop, inplace=True)
-    # df.reset_index(drop=True, inplace=True)
-    return df
-
 
 def update_players(engine, session, df: pd.DataFrame, player_ids: dict) -> None:
     """
@@ -289,8 +215,6 @@ def update_season_stats(engine, session, df: pd.DataFrame, player_ids: dict) -> 
             update.fumbles_fl=df.loc[idx, ('Fumbles', 'FL')]
     session.commit()
 
-
-
 def update_career_stats(engine, session, df: pd.DataFrame, player_ids: dict) -> None:
     """
     Uploads / updates the newest stats into the 'career_stats' table of the database.
@@ -450,92 +374,6 @@ def update_avg_stats(engine, session, df: pd.DataFrame, table_name: str) -> None
         session.add(new_entry)
     session.commit()
 
-
-def update_team_stats(engine, session, df: pd.DataFrame, game_ids: dict):
-    """
-    Uploads the newest team stats into the 'team_stats' table of the database.
-
-    Args:
-        engine (sqlalchemy): db connection engine
-        session (sqlalchemy): db connection session
-        team_df (pandas): df returned from clean_team_df(), 
-        game_ids: {game_string: game_id}
-
-    Returns:
-        Nothing, the data is uploaded to the mysql database. 
-    """
-    team_stats = pd.read_sql_query(session.query(TeamStats).filter(TeamStats.szn==df.loc[0, ('Game Info', 'szn')]).statement, engine)
-    #team_stats = pd.read_sql("SELECT * from team_stats where szn="+str(df.loc[0, ('Game Info', 'szn')]), engine)
-    for idx in range(len(df)):
-        if df.loc[idx, ('Game Info', 'H/A')] == 1:
-            home = df.loc[idx, ('Game Info', 'Tm')]
-            away = df.loc[idx, ('Game Info', 'Opp')]
-        else:
-            home = df.loc[idx, ('Game Info', 'Opp')]
-            away = df.loc[idx, ('Game Info', 'Tm')]
-        key = df.loc[idx, ('Game Info', 'Date')] + ' 00:00:00' + home + away
-        game_id = game_ids.get(key)
-        if game_id is None:
-            raise RuntimeError("game_id not found: " + key)
-        if len(team_stats.loc[(team_stats['game_id'] == game_id) & (team_stats['team']==df.loc[idx, ('Game Info', 'Tm')]), :]) > 0:
-            continue
-        total_tds = df.loc[idx, ('Passing', 'TD')] + df.loc[idx, ('Rushing', 'TD')]
-        total_pts = (total_tds*6) + (df.loc[idx, ('Scoring', 'FGM')]*3) + df.loc[idx, ('Scoring', 'XPM')]
-        new_entry = TeamStats(game_id=game_id, szn=df.loc[idx, ('Game Info', 'szn')], date=df.loc[idx, ('Game Info', 'Date')], 
-                              team=df.loc[idx, ('Game Info', 'Tm')], passing_cmp=df.loc[idx, ('Passing', 'Cmp')], 
-                              passing_att=df.loc[idx, ('Passing', 'Att')], passing_cmp_prc=df.loc[idx, ('Passing', 'Cmp%')], 
-                              passing_yds=df.loc[idx, ('Passing', 'Yds')], passing_tds=df.loc[idx, ('Passing', 'TD')], 
-                              passing_int=df.loc[idx, ('Passing', 'Int')], passing_rate=df.loc[idx, ('Passing', 'Rate')], 
-                              passing_sacks=df.loc[idx, ('Passing', 'Sk')], passing_sack_yds_lost=df.loc[idx, ('Passing', 'Yds.1')], 
-                              passing_yds_att=df.loc[idx, ('Passing', 'Y/A')], passing_net_yds_att=df.loc[idx, ('Passing', 'NY/A')],
-                              rushing_att=df.loc[idx, ('Rushing', 'Att')], rushing_yds=df.loc[idx, ('Rushing', 'Yds')], 
-                              rushing_yds_att=df.loc[idx, ('Rushing', 'Y/A')], rushing_tds=df.loc[idx, ('Rushing', 'TD')], 
-                              scoring_tds=total_tds, scoring_pts=total_pts, 
-                              punts=df.loc[idx, ('Punting', 'Pnt')], punt_yds=df.loc[idx, ('Punting', 'Yds')], 
-                              third_down_conv=df.loc[idx, ('Downs', '3DConv')], third_down_att=df.loc[idx, ('Downs', '3DAtt')], 
-                              fourth_down_conv=df.loc[idx, ('Downs', '4DConv')], fourth_down_att=df.loc[idx, ('Downs', '4DAtt')])
-        session.add(new_entry)
-    session.commit()
-
-
-def update_avg_team_stats(engine, session, df: pd.DataFrame) -> None:
-    """
-    Uploads the newest team average stats into the 'team_avg_stats' table of the database.
-
-    Args:
-        engine (sqlalchemy): db connection engine
-        session (sqlalchemy): db connection session
-        team_df (pandas): df returned from create_team_avg_df()
-
-    Returns:
-        Nothing, the data is uploaded to the mysql database. 
-    """
-    team_avg_stats = pd.read_sql_query(session.query(TeamAvgStats).statement, engine)
-    for idx in range(len(df)):
-        game_id = df.loc[idx, 'game_id']
-        team = df.loc[idx, 'team']
-        curr_team = team_avg_stats.loc[(team_avg_stats['game_id'] == game_id) & (team_avg_stats['team'] == team), :]
-        #team_avg_stats = pd.read_sql_query(session.query(TeamAvgStats).filter(TeamAvgStats.game_id==df.loc[idx, 'game_id'], 
-        #                                                                      TeamAvgStats.team==df.loc[idx, 'team']).statement, engine)
-        if len(curr_team) > 0:
-            print(game_id + " + " + team + " combination already in database.")
-            continue
-        new_entry = TeamAvgStats(game_id=df.loc[idx, 'game_id'], szn=df.loc[idx, 'szn'], date=df.loc[idx, 'date'], 
-                              team=df.loc[idx, 'team'], passing_cmp=df.loc[idx, 'passing_cmp'], 
-                              passing_att=df.loc[idx, 'passing_att'], passing_cmp_prc=df.loc[idx, 'passing_cmp_prc'], 
-                              passing_yds=df.loc[idx, 'passing_yds'], passing_tds=df.loc[idx, 'passing_tds'], 
-                              passing_int=df.loc[idx, 'passing_int'], passing_rate=df.loc[idx, 'passing_rate'], 
-                              passing_sacks=df.loc[idx, 'passing_sacks'], passing_sack_yds_lost=df.loc[idx, 'passing_sack_yds_lost'], 
-                              passing_yds_att=df.loc[idx, 'passing_yds_att'], passing_net_yds_att=df.loc[idx, 'passing_net_yds_att'],
-                              rushing_att=df.loc[idx, 'rushing_att'], rushing_yds=df.loc[idx, 'rushing_yds'], 
-                              rushing_yds_att=df.loc[idx, 'rushing_yds_att'], rushing_tds=df.loc[idx, 'rushing_tds'], 
-                              scoring_tds=df.loc[idx, 'scoring_tds'], scoring_pts=df.loc[idx, 'scoring_pts'], 
-                              punts=df.loc[idx, 'punts'], punt_yds=df.loc[idx, 'punt_yds'], 
-                              third_down_conv=df.loc[idx, 'third_down_conv'], fourth_down_conv=df.loc[idx, 'fourth_down_conv'])
-        session.add(new_entry)
-    session.commit()
-
-
 def update_career_totals(engine, session, df: pd.DataFrame) -> None:
     """
     Uploads the newest game stats into the 'game_stats' table of the database.
@@ -609,9 +447,7 @@ def main(df: pd.DataFrame, team_df: pd.DataFrame) -> None:
         update_game_stats(session, df, game_ids, player_ids)
         update_season_stats(engine, session, df, player_ids)
         update_career_stats(engine, session, df, player_ids)
-        update_team_stats(engine, session, team_df, game_ids)
         update_avg_stats(engine, session, df, 'career_avg_stats')
         update_avg_stats(engine, session, df, 'season_avg_stats')
-        update_avg_team_stats(engine, session, team_df)
         update_career_totals(engine, session, df)
     engine.dispose()

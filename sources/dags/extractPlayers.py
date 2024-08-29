@@ -1,5 +1,5 @@
 """
-This module provides functions for scraping the revelent data to add to database.
+This module provides functions for scraping offensive player data to add to database.
 """
 import pandas as pd
 import requests
@@ -139,7 +139,7 @@ def pull_position_data(player_links: dict) -> pd.DataFrame:
                 continue
     return position_df
 
-def save_all_player_data() -> None:
+def save_offensive_player_data() -> None:
     # currently scraping players data several times per year
     # need to fix this to cut down on ~2 day runtime
     passing_links, passing_yearly_dfs = pull_player_links('passing')
@@ -159,102 +159,6 @@ def save_defensive_player_data() -> None:
     yearly_defensive_dfs.to_csv('./data/defense_szns.csv', index=False)
     defense_df.to_csv('./data/defense_df.csv', index=False)
 
-# saves team data into 53 year directories with around 26-32 teams in each depending on the year
-def pull_team_data() -> None:
-    # teams in 1995
-    teams = ['crd', 'atl', 'buf', 'chi', 'cin', 'cle', 'dal', 'den', 'det', 'gnb', 'clt', 'kan', 'rai', 'sea', 'tam',
-            'car', 'jax', 'sdg', 'ram', 'mia', 'min', 'nwe', 'nor', 'nyg', 'nyj', 'phi', 'pit', 'sfo', 'oti', 'was']
-    for year in range(1970, 2023):
-        print(year)
-        #adding teams to list as they join the nfl
-        if year == 1976:
-            teams.append('sea')
-            teams.append('tam')
-        elif year == 1995:
-            teams.append('car')
-            teams.append('jax')
-        elif year == 1996:
-            teams.append('rav')
-        elif year == 2002:
-            teams.append('htx')
-        for team in teams:
-            url = "https://www.pro-football-reference.com/teams/" + team + "/" + str(year) + "/gamelog/"
-            page = requests.get(url)
-            soup = BeautifulSoup(page.content, "html.parser")
-            time.sleep(3.5)
-            try:
-                string = "gamelog_opp" + str(year)
-                table = soup.find("table", {"id": string})
-                df = pd.read_html(str(table))[0]
-            except:
-                # cleveland didn't have a team for a few years so this accounts for those seasons
-                print(team + " did not exist in " + str(year))
-                continue
-            # cleaning data
-            col1 = {}
-            col2 = {}
-            df.drop(columns=("Unnamed: 3_level_0", "Unnamed: 3_level_1"), axis=1, inplace=True)
-            df.rename(columns={"Unnamed: 4_level_1": "Result"}, level=1, inplace=True)
-            for i in df.columns:
-                if "Unnamed:" in i[0]:
-                    col1[i[0]] = 'Game Info'
-                if "Unnamed:" in i[1]:
-                    col2[i[1]] = 'H/A'
-            df.rename(columns=col1, level=0, inplace=True)
-            df.rename(columns=col2, level=1, inplace=True)
-            df.loc[:, ('Game Info', 'H/A')] = [0 if i == "@" else 1 for i in df['Game Info']['H/A']]
-            df.loc[:, ('Game Info', 'OT')] = [int(0) if pd.isnull(i) else int(1) for i in df['Game Info']['OT']]
-            months_dict = {'January': 1, 'February': 2, 'March': 3, 'April': 4, 'May': 5, 'June': 6, 'July': 7, 
-                'August': 8, 'September': 9, 'October': 10, 'November': 11, 'December': 12}
-            df.loc[:, ('Game Info', 'Date')] = [str(year) + '-' + str(months_dict.get(i.split(" ")[0])) + '-' + i.split(" ")[1] for i in df['Game Info']['Date']]
-            # creates new directory if it doesn't exist
-            file = team + ".csv"
-            directory = Path("./team_data/original_data/" + str(year) + "/")
-            directory.mkdir(parents=True, exist_ok=True)
-            df.to_csv(directory / file, index=False)
-
-# scrape team defensive data with year specified in the function
-def scrape_team_data() -> pd.DataFrame:
-    year = 2024
-    teams = ['crd', 'atl', 'buf', 'chi', 'cin', 'cle', 'dal', 'den', 'det', 'gnb', 'clt', 'kan', 'rai', 'sea', 'tam', 'rav',
-            'car', 'jax', 'sdg', 'ram', 'mia', 'min', 'nwe', 'nor', 'nyg', 'nyj', 'phi', 'pit', 'sfo', 'oti', 'was', 'htx']
-    all_teams = pd.DataFrame()
-    for team in teams:
-        url = "https://www.pro-football-reference.com/teams/" + team + "/" + str(year) + "/gamelog/"
-        page = requests.get(url)
-        soup = BeautifulSoup(page.content, "html.parser")
-        time.sleep(3)
-        try:
-            string = "gamelog_opp" + str(year)
-            table = soup.find("table", {"id": string})
-            df = pd.read_html(io.StringIO(str(table)))[0]
-        except:
-            print(url)
-            raise RuntimeError("What the fuck")
-        # cleaning data
-        col1 = {}
-        col2 = {}
-        df.drop(columns=("Unnamed: 3_level_0", "Unnamed: 3_level_1"), axis=1, inplace=True)
-        df.rename(columns={"Unnamed: 4_level_1": "Result"}, level=1, inplace=True)
-        for i in df.columns:
-            if "Unnamed:" in i[0]:
-                col1[i[0]] = 'Game Info'
-            if "Unnamed:" in i[1]:
-                col2[i[1]] = 'H/A'
-        df.rename(columns=col1, level=0, inplace=True)
-        df.rename(columns=col2, level=1, inplace=True)
-        df.loc[:, ('Game Info', 'H/A')] = [0 if i == "@" else 1 for i in df['Game Info']['H/A']]
-        df.loc[:, ('Game Info', 'OT')] = [int(0) if pd.isnull(i) else int(1) for i in df['Game Info']['OT']]
-        df[('Game Info', 'Tm')] = team
-        df[('Game Info', 'szn')] = year
-        months_dict = {'January': 1, 'February': 2, 'March': 3, 'April': 4, 'May': 5, 'June': 6, 'July': 7, 
-            'August': 8, 'September': 9, 'October': 10, 'November': 11, 'December': 12}
-        df.loc[:, ('Game Info', 'Date')] = [str(year+1) + '-' + str(months_dict.get(i.split(" ")[0])) + '-' + i.split(" ")[1] if months_dict.get(i.split(" ")[0])<3 else str(year) + '-' + str(months_dict.get(i.split(" ")[0])) + '-' + i.split(" ")[1] for i in df['Game Info']['Date']]
-        all_teams = pd.concat([all_teams, df])
-    all_teams.reset_index(drop=True, inplace=True)
-    return all_teams
-
-
 def main() -> pd.DataFrame:
     passing_links, passing_yearly_dfs = pull_player_links('passing')
     passing_df = pull_position_data(passing_links)
@@ -263,7 +167,4 @@ def main() -> pd.DataFrame:
     receiving_links, receiving_yearly_dfs = pull_player_links('receiving')
     receiving_df = pull_position_data(receiving_links)
     all_games = pd.concat([passing_df, rushing_df, receiving_df])
-    # now calculating season data from games data
-    #all_seasons = pd.concat([passing_yearly_dfs, rushing_yearly_dfs, receiving_yearly_dfs])
-    all_teams = scrape_team_data()
-    return all_games, all_teams
+    return all_games

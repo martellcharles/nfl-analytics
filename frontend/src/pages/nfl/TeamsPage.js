@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import styles from './TeamsPage.module.css'
+import styles from './TeamsPage.module.css';
 
 const TeamsPage = () => {
     const navigate = useNavigate();

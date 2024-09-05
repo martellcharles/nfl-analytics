@@ -1,6 +1,7 @@
 .homePage {
     display: flex;
     flex-direction: column;
+    margin-top: 1%;
     align-items: center;
     padding: 2rem;
     min-height: 100vh;

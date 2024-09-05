@@ -26,16 +26,16 @@ def player_etl_workflow():
         return extract_main()
 
     @task()
-    def transform(games: pd.DataFrame, teams: pd.DataFrame):
+    def transform(games: pd.DataFrame):
         from sources.dags.transformPlayers import main as transform_main
         print("Transforming data...")
-        return transform_main(games, teams)
+        return transform_main(games)
 
     @task()
-    def load(t_games: pd.DataFrame, t_teams: pd.DataFrame):
+    def load(transformed_games: pd.DataFrame):
         from sources.dags.loadPlayers import main as load_main
         print("Loading data...")
-        load_main(t_games, t_teams)
+        load_main(transformed_games)
         return "Database upload successful"
     games = extract()
     transformed_games = transform(games)

@@ -1,12 +1,14 @@
 import React from 'react';
-import SeasonLeadersTable from './SeasonLeadersTable';
+import Header from '../../components/nfl/Header';
+import SeasonLeadersTable from '../../components/nfl/SeasonLeadersTable';
 import styles from './HomePage.module.css'
 
 
-const HomePage = () => {
+const NflHomePage = () => {
 
   return (
     <div className={styles.homePage}>
+      <Header />
       <div className={styles.hero}>
         <h1>Welcome to the NFL analytics page</h1>
         <p>Discover the power of analytics here</p>
@@ -16,4 +18,4 @@ const HomePage = () => {
   );
 };
 
-export default HomePage;
+export default NflHomePage;

@@ -13,36 +13,35 @@ def pull_player_links(statistic: str) -> dict:
     # loops through years and pulls the links of all players who have the requested stat as well as their season totals
     player_links = {}
     yearly_dfs = pd.DataFrame()
-    for year in range(1970, 2024):
-        # scrapes table from site and waits to ensure we don't send too many requests to the site
-        url = "https://www.pro-football-reference.com/years/" + str(year) + "/" + statistic + ".htm"
-        try:
-            page = requests.get(url)
-        except:
-            # f = open('./data/missed_players.txt', 'a')
-            print(url)
-            # f.write(url)
-            # f.write('\n')
-            # f.close()
+    year = 2024
+    # scrapes table from site and waits to ensure we don't send too many requests to the site
+    url = "https://www.pro-football-reference.com/years/" + str(year) + "/" + statistic + ".htm"
+    try:
+        page = requests.get(url)
+    except:
+        # f = open('./data/missed_players.txt', 'a')
+        print(url)
+        # f.write(url)
+        # f.write('\n')
+        # f.close()
+    soup = BeautifulSoup(page.content, "html.parser")
+    time.sleep(3)
+    curr_year_links = []
+    rows = soup.find("table").find("tbody").find_all("tr")
+    # this table contains the season totals for every player we gather, saving us some calculation later
+    df = pd.read_html(io.StringIO(str(soup.find("table"))))[0]
+    df = clean_season_df(df, df.columns.nlevels==2, statistic.title(), year)
+    # assigns variables needed for loop to function
+    for idx, row in enumerate(rows):
+        # grabs element of row that contains the player link
+        grandchildren = list(list(row.children)[1].children)
+        # sometimes has non-qb stats or rows that show column names
+        if df.loc[idx, ('Game Info', 'Pos')] == 'Pos':
             continue
-        soup = BeautifulSoup(page.content, "html.parser")
-        time.sleep(3)
-        curr_year_links = []
-        rows = soup.find("table").find("tbody").find_all("tr")
-        # this table contains the season totals for every player we gather, saving us some calculation later
-        df = pd.read_html(io.StringIO(str(soup.find("table"))))[0]
-        df = clean_season_df(df, df.columns.nlevels==2, statistic.title(), year)
-        # assigns variables needed for loop to function
-        for idx, row in enumerate(rows):
-            # grabs element of row that contains the player link
-            grandchildren = list(list(row.children)[1].children)
-            # sometimes has non-qb stats or rows that show column names
-            if df.loc[idx, ('Game Info', 'Pos')] == 'Pos':
-                continue
-            else:
-                curr_year_links.append(grandchildren[0]['href'])
-        player_links[year] = curr_year_links    
-        yearly_dfs = pd.concat([yearly_dfs, df])
+        else:
+            curr_year_links.append(grandchildren[0]['href'])
+    player_links[year] = curr_year_links    
+    yearly_dfs = pd.concat([yearly_dfs, df])
     return player_links, yearly_dfs
 
 def clean_season_df(df: pd.DataFrame, levels: bool, statistic: str, year: int) -> pd.DataFrame:

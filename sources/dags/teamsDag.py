@@ -21,19 +21,19 @@ def team_etl_workflow():
     import pandas as pd
     @task()
     def extract():
-        from sources.dags.extractTeams import main as extract_main
+        from extractTeams import main as extract_main
         print("Extracting data...")
         return extract_main()
 
     @task()
     def transform(teams: pd.DataFrame):
-        from sources.dags.transformTeams import main as transform_main
+        from transformTeams import main as transform_main
         print("Transforming data...")
         return transform_main(teams)
 
     @task()
     def load(transformed_teams: pd.DataFrame):
-        from sources.dags.loadTeams import main as load_main
+        from loadTeams import main as load_main
         print("Loading data...")
         load_main(transformed_teams)
         return "Database upload successful"

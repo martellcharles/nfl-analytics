@@ -6,6 +6,7 @@ import MlbHomePage from './pages/mlb/HomePage'
 import NbaHomePage from './pages/nba/HomePage'
 import NflHomePage from './pages/nfl/HomePage'
 import NflTeamsPage from './pages/nfl/TeamsPage'
+import NflTeamPage from './pages/nfl/TeamPage'
 import NflPlayersPage from './pages/nfl/PlayersPage'
 import NflSeasonLeadersPage from './pages/nfl/SeasonLeadersPage'
 import NhlHomePage from './pages/nhl/HomePage'
@@ -23,6 +24,7 @@ function App() {
                     <Route path="/nfl/teams" element={<NflTeamsPage />} />
                     <Route path="/nfl/players" element={<NflPlayersPage />} />
                     <Route path="/nfl/season-leaders" element={<NflSeasonLeadersPage />} />
+                    <Route path="/nfl/teams/:team-name" element={<NflTeamPage />} />
                     <Route path="/nhl" element={<NhlHomePage />} />
                 </Routes>
             </div>

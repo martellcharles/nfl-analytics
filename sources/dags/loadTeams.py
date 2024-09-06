@@ -114,8 +114,7 @@ def main(df: pd.DataFrame, team_df: pd.DataFrame) -> None:
     password = config['DATABASE']['password']
     server = config['DATABASE']['host']
     db = config['DATABASE']['db_dev']
-    ssl = config['DATABASE']['ssl_ca']
-    engine = create_engine(f"mysql+mysqldb://{user}:{password}@{server}/{db}?ssl_ca={ssl}")
+    engine = create_engine(f"mysql+mysqldb://{user}:{password}@{server}/{db}")
     # Create the tables / session
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine, autoflush=False)

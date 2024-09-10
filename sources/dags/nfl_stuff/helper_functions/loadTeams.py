@@ -3,10 +3,54 @@ This module provides functions for uploading the cleaned team data to the databa
 """
 import pandas as pd
 import configparser
-from sources.dags.databaseModels import *
+from databaseModels import *
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import pickle
+import os
+    
+def update_games(engine, session, df: pd.DataFrame, game_ids: dict) -> None:
+    """
+    Uploads the newest games into the 'games' table of the database.
+
+    Args:
+        engine (sqlalchemy): db connection engine
+        session (sqlalchemy): db connection session, 
+        games_df (pandas): df returned from clean_game()
+        game_ids (dict): {game_string: game_id}
+
+    Returns:
+        Nothing, the data is uploaded to the mysql database. 
+    """
+    games = pd.read_sql_query(session.query(Game).statement, engine)
+    if len(games) == 0:
+        curr_id = 1
+    else:
+        curr_id = max(games.loc[:,'game_id']) + 1
+    for idx in range(len(df)):
+        if 'Games' in df.loc[idx, ('Game Info', 'Date')]:
+            continue
+        if df.loc[idx, ('Game Info', 'H/A')] == 1:
+            home = df.loc[idx, ('Game Info', 'Tm')]
+            home_score = df.loc[idx, ('Score', 'Tm')]
+            away = df.loc[idx, ('Game Info', 'Opp')]
+            away_score = df.loc[idx, ('Score', 'Opp')]
+        else:
+            home = df.loc[idx, ('Game Info', 'Opp')]
+            home_score = df.loc[idx, ('Score', 'Opp')]
+            away = df.loc[idx, ('Game Info', 'Tm')]
+            away_score = df.loc[idx, ('Score', 'Tm')]
+        key = df.loc[idx, ('Game Info', 'Date')] + ' 00:00:00' + home + away
+        if (game_ids.get(key) is None) and (not pd.isna(df.loc[idx, ('Score', 'Tm')])):
+            new_entry = Game(game_id=curr_id, szn=df.loc[idx, ('Game Info', 'szn')], date=df.loc[idx, ('Game Info', 'Date')], home_team=home, away_team=away, 
+                            home_score=home_score, away_score=away_score, game_type='Regular')
+            game_ids[key] = curr_id
+            session.add(new_entry)
+            curr_id += 1
+    session.commit()
+    game_ids_path = os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/game_ids.pkl"
+    with open(game_ids_path, 'wb') as dickle:
+        pickle.dump(game_ids, dickle)
 
 def update_team_stats(engine, session, df: pd.DataFrame, game_ids: dict):
     """
@@ -22,8 +66,9 @@ def update_team_stats(engine, session, df: pd.DataFrame, game_ids: dict):
         Nothing, the data is uploaded to the mysql database. 
     """
     team_stats = pd.read_sql_query(session.query(TeamStats).filter(TeamStats.szn==df.loc[0, ('Game Info', 'szn')]).statement, engine)
-    #team_stats = pd.read_sql("SELECT * from team_stats where szn="+str(df.loc[0, ('Game Info', 'szn')]), engine)
     for idx in range(len(df)):
+        if pd.isna(df.loc[idx, ('Score', 'Tm')]):
+            continue
         if df.loc[idx, ('Game Info', 'H/A')] == 1:
             home = df.loc[idx, ('Game Info', 'Tm')]
             away = df.loc[idx, ('Game Info', 'Opp')]
@@ -92,33 +137,57 @@ def update_avg_team_stats(engine, session, df: pd.DataFrame) -> None:
         session.add(new_entry)
     session.commit()
     
-def main(df: pd.DataFrame, team_df: pd.DataFrame) -> None:
+def update_id_dicts() -> None:
+    """
+        Updates the player_ids dict and game_ids dict, mostly used in development
+    """
+    config_path = os.environ.get("NFL_DATABASE")
+    engine = create_engine(config_path)
+    # Create the tables / session
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    player_ids = {}
+    game_ids = {}
+    player_ids_path = os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/player_ids.pkl"
+    game_ids_path = os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/game_ids.pkl"
+    with Session() as session:
+            players = pd.read_sql("SELECT * from players", engine)
+            games = pd.read_sql("SELECT * from games", engine)
+            for idx in range(len(players)):
+                    player_ids[players.loc[idx, 'first_name'] + ' ' + players.loc[idx, 'last_name']] = players.loc[idx, 'player_id']
+            for idx in range(len(games)):
+                    game_ids[str(games.loc[idx, 'date']) + ' 00:00:00' + games.loc[idx, 'home_team'] + games.loc[idx, 'away_team']] = games.loc[idx, 'game_id']
+            with open(player_ids_path, 'wb') as dickle:
+                    pickle.dump(player_ids, dickle)
+            with open(game_ids_path, 'wb') as dickle:
+                    pickle.dump(game_ids, dickle)
+    engine.dispose()
+    
+def main() -> None:
     """
     Uploads the latest week of game_stats into the all tables of the database.
 
     Args:
-        games_df (pandas): Cleaned dataframe of stats per player per game
-        team_df (pandas): cleaned dataframe of team defensive stats per game.
-        game_ids (dict): {game_string: game_id}
-        player_ids (dict): {player name: player_id}
+        Nothing, claned_team_data is loaded from csv saved to data folder
 
     Returns:
         Nothing, the data is uploaded to the mysql database. 
     """
-    with open('./data/game_ids.pkl', 'rb') as dickle:
+    df = pd.read_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/cleaned_team_data.csv")
+    update_id_dicts()
+    game_ids_path = os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/game_ids.pkl"
+    with open(game_ids_path, 'rb') as dickle:
         game_ids = pickle.load(dickle)
     # Connect to database
-    config = configparser.ConfigParser()
-    config.read('./config.cfg')
-    user = config['DATABASE']['user']
-    password = config['DATABASE']['password']
-    server = config['DATABASE']['host']
-    db = config['DATABASE']['db_dev']
-    engine = create_engine(f"mysql+mysqldb://{user}:{password}@{server}/{db}")
+    config_path = os.environ.get("NFL_DATABASE")
+    engine = create_engine(config_path)
     # Create the tables / session
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine, autoflush=False)
     with Session() as session:
+        update_games(engine, session, team_df, game_ids)
+        with open(game_ids_path, 'rb') as dickle:
+            game_ids = pickle.load(dickle)
         update_team_stats(engine, session, team_df, game_ids)
         update_avg_team_stats(engine, session, team_df)
     engine.dispose()

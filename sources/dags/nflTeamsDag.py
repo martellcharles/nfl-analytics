@@ -9,36 +9,36 @@ from airflow.utils.dates import days_ago
         'email_on_failure': False,
         'email_on_retry': False,
         'retries': 1,   
-        'retry_delay': timedelta(minutes=5),
+        'retry_delay': timedelta(minutes=1),
     },
-    description='ETL workflow for NFL data',
+    description='ETL workflow for NFL team data',
     schedule_interval='0 0 * * 1,2,5',
     start_date=days_ago(1),
     catchup=False,
     tags=['etl'],
 )
-def player_etl_workflow():
+def nfl_team_etl():
     import pandas as pd
     @task()
     def extract():
-        from extractPlayers import main as extract_main
+        from nfl_stuff.helper_functions.extractTeams import main as extract_main
         print("Extracting data...")
         return extract_main()
 
     @task()
-    def transform(games: pd.DataFrame):
-        from transformPlayers import main as transform_main
+    def transform():
+        from nfl_stuff.helper_functions.transformTeams import main as transform_main
         print("Transforming data...")
-        return transform_main(games)
+        return transform_main()
 
     @task()
-    def load(transformed_games: pd.DataFrame):
-        from loadPlayers import main as load_main
+    def load():
+        from nfl_stuff.helper_functions.loadTeams import main as load_main
         print("Loading data...")
-        load_main(transformed_games)
+        load_main()
         return "Database upload successful"
-    games = extract()
-    transformed_games = transform(games)
-    load(transformed_games)
+    extract()
+    transform()
+    load()
 
-player_dag = player_etl_workflow()
+team_dag = nfl_team_etl()

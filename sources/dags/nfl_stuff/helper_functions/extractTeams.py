@@ -5,9 +5,7 @@ import pandas as pd
 import requests
 import time
 from bs4 import BeautifulSoup
-from pathlib import Path
 import io
-
 
 # scrape team defensive data with year specified in the function
 def scrape_team_data() -> pd.DataFrame:
@@ -51,5 +49,5 @@ def scrape_team_data() -> pd.DataFrame:
     return all_teams
 
 def main() -> pd.DataFrame:
-    all_teams = scrape_team_data()
-    return all_teams
+    team_data = scrape_team_data()
+    team_data.to_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/team_data.csv")

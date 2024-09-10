@@ -5,10 +5,11 @@ This module provides functions for uploading the cleaned player data to the data
 import pandas as pd
 import numpy as np
 import configparser
-from sources.dags.databaseModels import *
+from databaseModels import *
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import pickle
+import os
 
 def update_players(engine, session, df: pd.DataFrame, player_ids: dict) -> None:
     """
@@ -24,7 +25,6 @@ def update_players(engine, session, df: pd.DataFrame, player_ids: dict) -> None:
         Nothing, the data is uploaded to the mysql database. 
     """
     players = pd.read_sql_query(session.query(Player).statement, engine)
-    #players = pd.read_sql("SELECT * from players", engine)
     if len(players) == 0:
         curr_id = 1
     else:
@@ -34,7 +34,7 @@ def update_players(engine, session, df: pd.DataFrame, player_ids: dict) -> None:
         last_name = player.split(' ',1)[1]
         if player_ids.get(first_name + ' ' + last_name):
             player_id = player_ids.get(first_name + ' ' + last_name)
-            update = session.query(Player).filter_by(id=player_id).one()
+            update = session.query(Player).filter_by(player_id=player_id).one()
             update.last_year = df.loc[df[('Player Info', 'Name')] == player, ('Game Info', 'szn')].iloc[0]
         else:
             position = df.loc[df[('Player Info', 'Name')] == player, ('Player Info', 'Pos')].iloc[0]
@@ -44,9 +44,9 @@ def update_players(engine, session, df: pd.DataFrame, player_ids: dict) -> None:
             curr_id += 1
             session.add(new_entry)
     session.commit()
-    with open('./data/player_ids.pkl', 'wb') as dickle:
+    player_ids_path = os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/player_ids.pkl"
+    with open(player_ids_path, 'wb') as dickle:
         pickle.dump(player_ids, dickle)
-
 
 def update_games(engine, session, df: pd.DataFrame, game_ids: dict) -> None:
     """
@@ -88,7 +88,8 @@ def update_games(engine, session, df: pd.DataFrame, game_ids: dict) -> None:
             session.add(new_entry)
             curr_id += 1
     session.commit()
-    with open('./data/game_ids.pkl', 'wb') as dickle:
+    game_ids_path = os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/game_ids.pkl"
+    with open(game_ids_path, 'wb') as dickle:
         pickle.dump(game_ids, dickle)
 
 
@@ -165,7 +166,6 @@ def update_season_stats(engine, session, df: pd.DataFrame, player_ids: dict) -> 
         team = df.loc[df[('Player Info', 'Name')]==player,('Game Info', 'Tm')].iloc[0]
         szn = df.loc[idx, ('Game Info', 'szn')]
         szn_stats = all_szn_stats.loc[(all_szn_stats['szn'] == szn) & (all_szn_stats['player_id'] == str(player_id)), :]
-        #szn_stats = pd.read_sql("SELECT * FROM season_stats WHERE szn="+str(szn)+" AND player_id="+str(player_id), engine)
         if len(szn_stats) == 0:
             new_entry = SeasonStats(player_id=player_id, szn=szn, 
                                     player_name=player, team=team, games_played=gp,
@@ -232,7 +232,6 @@ def update_career_stats(engine, session, df: pd.DataFrame, player_ids: dict) -> 
     for player in df[('Player Info', 'Name')].unique():
         player_id = player_ids.get(player)
         player_stats = career_stats.loc[career_stats['player_id']==player_id,:]
-        #career_stats = pd.read_sql("SELECT * FROM career_stats WHERE player_id="+str(player_id), engine)
         idx = df.loc[df[('Player Info', 'Name')]==player,:].index[-1]
         if 'Games' not in df.loc[idx, ('Game Info', 'Date')]:
             gp = len(df.loc[df[('Player Info', 'Name')]==player,:]) - 1
@@ -340,37 +339,37 @@ def update_avg_stats(engine, session, df: pd.DataFrame, table_name: str) -> None
             print(game_id + " + " + player_id + " combination already in database.")
             continue
         if table_name == 'career_avg_stats':
-            new_entry = CareerAvgStats(game_id=game_id, szn=df.loc[idx, 'szn'], date=df.loc[idx, 'date'], 
-                              player_id=player_id, team=df.loc[idx, 'team'], 
-                              passing_cmp=df.loc[idx, 'passing_cmp'], passing_att=df.loc[idx, 'passing_att'], 
-                              passing_cmp_prc=df.loc[idx, 'passing_cmp_prc'], passing_yds=df.loc[idx, 'passing_yds'], 
-                              passing_tds=df.loc[idx, 'passing_tds'], passing_int=df.loc[idx, 'passing_int'], 
-                              passing_rate=df.loc[idx, 'passing_rate'], passing_sacks=df.loc[idx, 'passing_sacks'], 
-                              passing_sack_yds_lost=df.loc[idx, 'passing_sack_yds_lost'], passing_yds_att=df.loc[idx, 'passing_yds_att'],
-                              passing_adj_yds_att=df.loc[idx, 'passing_adj_yds_att'], rushing_att=df.loc[idx, 'rushing_att'],
-                              rushing_yds=df.loc[idx, 'rushing_yds'], rushing_yds_att=df.loc[idx, 'rushing_yds_att'], 
-                              rushing_tds=df.loc[idx, 'rushing_tds'], scoring_tds=df.loc[idx, 'scoring_tds'],
-                              scoring_pts=df.loc[idx, 'scoring_pts'], receiving_rec=df.loc[idx, 'receiving_rec'],
-                              receiving_yds=df.loc[idx, 'receiving_yds'], receiving_yds_rec=df.loc[idx, 'receiving_yds_rec'],
-                              receiving_tds=df.loc[idx, 'receiving_tds'], receiving_tgts=df.loc[idx, 'receiving_tgts'],
-                              receiving_catch_prc=df.loc[idx, 'receiving_catch_prc'], receiving_yds_tgt=df.loc[idx, 'receiving_yds_tgt'],
-                              fumbles_fmb=df.loc[idx, 'fumbles_fmb'], fumbles_fl=df.loc[idx, 'fumbles_fl'])
+            new_entry = CareerAvgStats(game_id=game_id, szn=df.loc[idx, ('Game Info', 'szn')], date=df.loc[idx, ('Game Info', 'Date')], 
+                            player_id=player_id, team=df.loc[idx, ('Game Info', 'Tm')], 
+                            passing_cmp=df.loc[idx, ('Passing', 'Cmp')], passing_att=df.loc[idx, ('Passing', 'Att')], 
+                            passing_cmp_prc=df.loc[idx, ('Passing', 'Cmp%')], passing_yds=df.loc[idx, ('Passing', 'Yds')], 
+                            passing_tds=df.loc[idx, ('Passing', 'TD')], passing_int=df.loc[idx, ('Passing', 'Int')], 
+                            passing_rate=df.loc[idx, ('Passing', 'Rate')], passing_sacks=df.loc[idx, ('Passing', 'Sk')], 
+                            passing_sack_yds_lost=df.loc[idx, ('Passing', 'Yds.1')], passing_yds_att=df.loc[idx, ('Passing', 'Y/A')],
+                            passing_adj_yds_att=df.loc[idx, ('Passing', 'AY/A')], rushing_att=df.loc[idx, ('Rushing', 'Att')],
+                            rushing_yds=df.loc[idx, ('Rushing', 'Yds')], rushing_yds_att=df.loc[idx, ('Rushing', 'Y/A')], 
+                            rushing_tds=df.loc[idx, ('Rushing', 'TD')], scoring_tds=df.loc[idx, ('Scoring', 'TD')],
+                            scoring_pts=df.loc[idx, ('Scoring', 'Pts')], receiving_rec=df.loc[idx, ('Receiving', 'Rec')],
+                            receiving_yds=df.loc[idx, ('Receiving', 'Yds')], receiving_yds_rec=df.loc[idx, ('Receiving', 'Y/R')],
+                            receiving_tds=df.loc[idx, ('Receiving', 'TD')], receiving_tgts=df.loc[idx, ('Receiving', 'Tgt')],
+                            receiving_catch_prc=df.loc[idx, ('Receiving', 'Ctch%')], receiving_yds_tgt=df.loc[idx, ('Receiving', 'Y/Tgt')],
+                            fumbles_fmb=df.loc[idx, ('Fumbles', 'Fmb')], fumbles_fl=df.loc[idx, ('Fumbles', 'FL')])
         else:
-            new_entry = SeasonAvgStats(game_id=game_id, szn=df.loc[idx, 'szn'], date=df.loc[idx, 'date'], 
-                              player_id=player_id, team=df.loc[idx, 'team'], 
-                              passing_cmp=df.loc[idx, 'passing_cmp'], passing_att=df.loc[idx, 'passing_att'], 
-                              passing_cmp_prc=df.loc[idx, 'passing_cmp_prc'], passing_yds=df.loc[idx, 'passing_yds'], 
-                              passing_tds=df.loc[idx, 'passing_tds'], passing_int=df.loc[idx, 'passing_int'], 
-                              passing_rate=df.loc[idx, 'passing_rate'], passing_sacks=df.loc[idx, 'passing_sacks'], 
-                              passing_sack_yds_lost=df.loc[idx, 'passing_sack_yds_lost'], passing_yds_att=df.loc[idx, 'passing_yds_att'],
-                              passing_adj_yds_att=df.loc[idx, 'passing_adj_yds_att'], rushing_att=df.loc[idx, 'rushing_att'],
-                              rushing_yds=df.loc[idx, 'rushing_yds'], rushing_yds_att=df.loc[idx, 'rushing_yds_att'], 
-                              rushing_tds=df.loc[idx, 'rushing_tds'], scoring_tds=df.loc[idx, 'scoring_tds'],
-                              scoring_pts=df.loc[idx, 'scoring_pts'], receiving_rec=df.loc[idx, 'receiving_rec'],
-                              receiving_yds=df.loc[idx, 'receiving_yds'], receiving_yds_rec=df.loc[idx, 'receiving_yds_rec'],
-                              receiving_tds=df.loc[idx, 'receiving_tds'], receiving_tgts=df.loc[idx, 'receiving_tgts'],
-                              receiving_catch_prc=df.loc[idx, 'receiving_catch_prc'], receiving_yds_tgt=df.loc[idx, 'receiving_yds_tgt'],
-                              fumbles_fmb=df.loc[idx, 'fumbles_fmb'], fumbles_fl=df.loc[idx, 'fumbles_fl'])
+            new_entry = SeasonAvgStats(game_id=game_id, szn=df.loc[idx, ('Game Info', 'szn')], date=df.loc[idx, ('Game Info', 'Date')], 
+                            player_id=player_id, team=df.loc[idx, ('Game Info', 'Tm')], 
+                            passing_cmp=df.loc[idx, ('Passing', 'Cmp')], passing_att=df.loc[idx, ('Passing', 'Att')], 
+                            passing_cmp_prc=df.loc[idx, ('Passing', 'Cmp%')], passing_yds=df.loc[idx, ('Passing', 'Yds')], 
+                            passing_tds=df.loc[idx, ('Passing', 'TD')], passing_int=df.loc[idx, ('Passing', 'Int')], 
+                            passing_rate=df.loc[idx, ('Passing', 'Rate')], passing_sacks=df.loc[idx, ('Passing', 'Sk')], 
+                            passing_sack_yds_lost=df.loc[idx, ('Passing', 'Yds.1')], passing_yds_att=df.loc[idx, ('Passing', 'Y/A')],
+                            passing_adj_yds_att=df.loc[idx, ('Passing', 'AY/A')], rushing_att=df.loc[idx, ('Rushing', 'Att')],
+                            rushing_yds=df.loc[idx, ('Rushing', 'Yds')], rushing_yds_att=df.loc[idx, ('Rushing', 'Y/A')], 
+                            rushing_tds=df.loc[idx, ('Rushing', 'TD')], scoring_tds=df.loc[idx, ('Scoring', 'TD')],
+                            scoring_pts=df.loc[idx, ('Scoring', 'Pts')], receiving_rec=df.loc[idx, ('Receiving', 'Rec')],
+                            receiving_yds=df.loc[idx, ('Receiving', 'Yds')], receiving_yds_rec=df.loc[idx, ('Receiving', 'Y/R')],
+                            receiving_tds=df.loc[idx, ('Receiving', 'TD')], receiving_tgts=df.loc[idx, ('Receiving', 'Tgt')],
+                            receiving_catch_prc=df.loc[idx, ('Receiving', 'Ctch%')], receiving_yds_tgt=df.loc[idx, ('Receiving', 'Y/Tgt')],
+                            fumbles_fmb=df.loc[idx, ('Fumbles', 'Fmb')], fumbles_fl=df.loc[idx, ('Fumbles', 'FL')])
         session.add(new_entry)
     session.commit()
 
@@ -393,56 +392,80 @@ def update_career_totals(engine, session, df: pd.DataFrame) -> None:
         if len(career_totals.loc[(career_totals['game_id'] == game_id) & (career_totals['player_id'] == player_id), :]) > 0:
             print(game_id + " + " + player_id + " combination already in database.")
             continue
-        new_entry = CareerTotals(game_id=game_id, szn=df.loc[idx, 'szn'], date=df.loc[idx, 'date'], 
-                              player_id=player_id, team=df.loc[idx, 'team'], 
-                              passing_cmp=df.loc[idx, 'passing_cmp'], passing_att=df.loc[idx, 'passing_att'], 
-                              passing_cmp_prc=df.loc[idx, 'passing_cmp_prc'], passing_yds=df.loc[idx, 'passing_yds'], 
-                              passing_tds=df.loc[idx, 'passing_tds'], passing_int=df.loc[idx, 'passing_int'], 
-                              passing_rate=df.loc[idx, 'passing_rate'], passing_sacks=df.loc[idx, 'passing_sacks'], 
-                              passing_sack_yds_lost=df.loc[idx, 'passing_sack_yds_lost'], passing_yds_att=df.loc[idx, 'passing_yds_att'],
-                              passing_adj_yds_att=df.loc[idx, 'passing_adj_yds_att'], rushing_att=df.loc[idx, 'rushing_att'],
-                              rushing_yds=df.loc[idx, 'rushing_yds'], rushing_yds_att=df.loc[idx, 'rushing_yds_att'], 
-                              rushing_tds=df.loc[idx, 'rushing_tds'], scoring_tds=df.loc[idx, 'scoring_tds'],
-                              scoring_pts=df.loc[idx, 'scoring_pts'], receiving_rec=df.loc[idx, 'receiving_rec'],
-                              receiving_yds=df.loc[idx, 'receiving_yds'], receiving_yds_rec=df.loc[idx, 'receiving_yds_rec'],
-                              receiving_tds=df.loc[idx, 'receiving_tds'], receiving_tgts=df.loc[idx, 'receiving_tgts'],
-                              receiving_catch_prc=df.loc[idx, 'receiving_catch_prc'], receiving_yds_tgt=df.loc[idx, 'receiving_yds_tgt'],
-                              fumbles_fmb=df.loc[idx, 'fumbles_fmb'], fumbles_fl=df.loc[idx, 'fumbles_fl'])
+        new_entry = CareerTotals(game_id=game_id, szn=df.loc[idx, ('Game Info', 'szn')], date=df.loc[idx, ('Game Info', 'Date')], 
+                            player_id=player_id, team=df.loc[idx, ('Game Info', 'Tm')], 
+                            passing_cmp=df.loc[idx, ('Passing', 'Cmp')], passing_att=df.loc[idx, ('Passing', 'Att')], 
+                            passing_cmp_prc=df.loc[idx, ('Passing', 'Cmp%')], passing_yds=df.loc[idx, ('Passing', 'Yds')], 
+                            passing_tds=df.loc[idx, ('Passing', 'TD')], passing_int=df.loc[idx, ('Passing', 'Int')], 
+                            passing_rate=df.loc[idx, ('Passing', 'Rate')], passing_sacks=df.loc[idx, ('Passing', 'Sk')], 
+                            passing_sack_yds_lost=df.loc[idx, ('Passing', 'Yds.1')], passing_yds_att=df.loc[idx, ('Passing', 'Y/A')],
+                            passing_adj_yds_att=df.loc[idx, ('Passing', 'AY/A')], rushing_att=df.loc[idx, ('Rushing', 'Att')],
+                            rushing_yds=df.loc[idx, ('Rushing', 'Yds')], rushing_yds_att=df.loc[idx, ('Rushing', 'Y/A')], 
+                            rushing_tds=df.loc[idx, ('Rushing', 'TD')], scoring_tds=df.loc[idx, ('Scoring', 'TD')],
+                            scoring_pts=df.loc[idx, ('Scoring', 'Pts')], receiving_rec=df.loc[idx, ('Receiving', 'Rec')],
+                            receiving_yds=df.loc[idx, ('Receiving', 'Yds')], receiving_yds_rec=df.loc[idx, ('Receiving', 'Y/R')],
+                            receiving_tds=df.loc[idx, ('Receiving', 'TD')], receiving_tgts=df.loc[idx, ('Receiving', 'Tgt')],
+                            receiving_catch_prc=df.loc[idx, ('Receiving', 'Ctch%')], receiving_yds_tgt=df.loc[idx, ('Receiving', 'Y/Tgt')],
+                            fumbles_fmb=df.loc[idx, ('Fumbles', 'Fmb')], fumbles_fl=df.loc[idx, ('Fumbles', 'FL')])
         session.add(new_entry)
     session.commit()
+    
+def update_id_dicts() -> None:
+    """
+        Updates the player_ids dict and game_ids dict, mostly used in development
+    """
+    config_path = os.environ.get("NFL_DATABASE")
+    engine = create_engine(config_path)
+    # Create the tables / session
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    player_ids = {}
+    game_ids = {}
+    with Session() as session:
+            players = pd.read_sql("SELECT * from players", engine)
+            games = pd.read_sql("SELECT * from games", engine)
+            for idx in range(len(players)):
+                    player_ids[players.loc[idx, 'first_name'] + ' ' + players.loc[idx, 'last_name']] = players.loc[idx, 'player_id']
+            for idx in range(len(games)):
+                    game_ids[str(games.loc[idx, 'date']) + games.loc[idx, 'home_team'] + games.loc[idx, 'away_team']] = games.loc[idx, 'game_id']
+            with open(player_ids_path, 'wb') as dickle:
+                    pickle.dump(player_ids, dickle)
+            with open(game_ids_path, 'wb') as dickle:
+                    pickle.dump(game_ids, dickle)
+    engine.dispose()
 
-def main(df: pd.DataFrame, team_df: pd.DataFrame) -> None:
+def main() -> None:
     """
     Uploads the latest week of game_stats into the all tables of the database.
 
     Args:
-        games_df (pandas): Cleaned dataframe of stats per player per game
-        team_df (pandas): cleaned dataframe of team defensive stats per game.
-        game_ids (dict): {game_string: game_id}
-        player_ids (dict): {player name: player_id}
+        Nothing, claned_player_data is loaded from csv saved to data folder
 
     Returns:
         Nothing, the data is uploaded to the mysql database. 
     """
+    df = pd.read_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/cleaned_player_data.csv")
+    update_id_dicts()
     # load player and game ids
-    with open('./data/player_ids.pkl', 'rb') as dickle:
+    player_ids_path = os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/player_ids.pkl"
+    game_ids_path = os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/game_ids.pkl"
+    with open(player_ids_path, 'rb') as dickle:
         player_ids = pickle.load(dickle)
-    with open('./data/game_ids.pkl', 'rb') as dickle:
+    with open(game_ids_path, 'rb') as dickle:
         game_ids = pickle.load(dickle)
     # Connect to database
-    config = configparser.ConfigParser()
-    config.read('./config.cfg')
-    user = config['DATABASE']['user']
-    password = config['DATABASE']['password']
-    server = config['DATABASE']['host']
-    db = config['DATABASE']['db_dev']
-    engine = create_engine(f"mysql+mysqldb://{user}:{password}@{server}/{db}")
+    config_path = os.environ.get("NFL_DATABASE")
+    engine = create_engine(config_path)
     # Create the tables / session
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine, autoflush=False)
     with Session() as session:
         update_players(engine, session, df, player_ids)
         update_games(engine, session, df, game_ids)
+        with open(player_ids_path, 'rb') as dickle:
+            player_ids = pickle.load(dickle)
+        with open(game_ids_path, 'rb') as dickle:
+            game_ids = pickle.load(dickle)
         update_game_stats(session, df, game_ids, player_ids)
         update_season_stats(engine, session, df, player_ids)
         update_career_stats(engine, session, df, player_ids)

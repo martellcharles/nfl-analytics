@@ -3,15 +3,24 @@ This module provides functions for cleaning the scraped team data to prepare for
 """
 import pandas as pd
 import numpy as np
-import configparser
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import pickle
+import os
 
 Base = declarative_base()
 
 def clean_team_df(df: pd.DataFrame) -> None:
+    """
+    Cleans the dataframe of team stats to match database format.
+
+    Args:
+        df (pandas): Dataframe of team stats per game per team.
+
+    Returns:
+        Nothing, the dataframe is edited in place.. 
+    """
     for idx in range(len(df)):
         # adds 0s to single digit months and days to match formatting for game_id key
         if len(df.loc[idx, ('Game Info', 'Date')].split('-')[1]) == 1:
@@ -76,39 +85,9 @@ def clean_team_df(df: pd.DataFrame) -> None:
             'Houston Texans': 'hou', 'Los Angeles Chargers': 'lac', 'Las Vegas Raiders': 'lvr', 'Washington Football Team': 'was', 
             'Washington Commanders': 'was', 'Los Angeles Rams1': 'ram'}
         df.loc[idx, ('Game Info', 'Opp')] = teams_dict.get(df.loc[idx, ('Game Info', 'Opp')])
-    df = df.replace({np.nan: None})
+    df.fillna(0, inplace=True)
     
-def update_id_dicts() -> None:
-    """
-        Updates the player_ids dict and game_ids dict, mostly used in development
-    """
-    config = configparser.ConfigParser()
-    config.read('./config.cfg')
-    user = config['DATABASE']['user']
-    password = config['DATABASE']['password']
-    server = config['DATABASE']['host']
-    db = config['DATABASE']['db_dev']
-    ssl = config['DATABASE']['ssl_ca']
-    engine = create_engine(f"mysql+mysqldb://{user}:{password}@{server}/{db}?ssl_ca={ssl}")
-    # Create the tables / session
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    player_ids = {}
-    game_ids = {}
-    with Session() as session:
-            players = pd.read_sql("SELECT * from players", engine)
-            games = pd.read_sql("SELECT * from games", engine)
-            for idx in range(len(players)):
-                    player_ids[players.loc[idx, 'first_name'] + ' ' + players.loc[idx, 'last_name']] = players.loc[idx, 'player_id']
-            for idx in range(len(games)):
-                    game_ids[str(games.loc[idx, 'date']) + games.loc[idx, 'home_team'] + games.loc[idx, 'away_team']] = games.loc[idx, 'game_id']
-            with open('./data/player_ids.pkl', 'wb') as dickle:
-                    pickle.dump(player_ids, dickle)
-            with open('./data/game_ids.pkl', 'wb') as dickle:
-                    pickle.dump(game_ids, dickle)
-    engine.dispose()
-    
-def main(teams_df: pd.DataFrame) -> pd.DataFrame:
-    update_id_dicts()
-    cleaned_teams = clean_team_df(teams_df)
-    return cleaned_teams
+def main() -> pd.DataFrame:
+    team_data = pd.read_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/team_data.csv")
+    clean_team_df(team_data)
+    team_data.to_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/cleaned_team_data.csv")

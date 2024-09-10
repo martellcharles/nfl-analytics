@@ -72,6 +72,7 @@ services:
     environment:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqldb://root:password@database:3306/airflowMetadata
       NFL_DATABASE: mysql+mysqldb://root:password@database:3306/nfl_db
+      NFL_SEASON: 2024
       AIRFLOW_HOME: /opt/airflow
     depends_on:
       airflow-init:

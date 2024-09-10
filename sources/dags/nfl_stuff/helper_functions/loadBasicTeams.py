@@ -98,48 +98,10 @@ def update_team_stats(engine, session, df: pd.DataFrame, game_ids: dict):
                               fourth_down_conv=df.loc[idx, ('Downs', '4DConv')], fourth_down_att=df.loc[idx, ('Downs', '4DAtt')])
         session.add(new_entry)
     session.commit()
-
-
-def update_avg_team_stats(engine, session, df: pd.DataFrame) -> None:
-    """
-    Uploads the newest team average stats into the 'team_avg_stats' table of the database.
-
-    Args:
-        engine (sqlalchemy): db connection engine
-        session (sqlalchemy): db connection session
-        team_df (pandas): df returned from create_team_avg_df()
-
-    Returns:
-        Nothing, the data is uploaded to the mysql database. 
-    """
-    team_avg_stats = pd.read_sql_query(session.query(TeamAvgStats).statement, engine)
-    for idx in range(len(df)):
-        game_id = df.loc[idx, 'game_id']
-        team = df.loc[idx, 'team']
-        curr_team = team_avg_stats.loc[(team_avg_stats['game_id'] == game_id) & (team_avg_stats['team'] == team), :]
-        #team_avg_stats = pd.read_sql_query(session.query(TeamAvgStats).filter(TeamAvgStats.game_id==df.loc[idx, 'game_id'], 
-        #                                                                      TeamAvgStats.team==df.loc[idx, 'team']).statement, engine)
-        if len(curr_team) > 0:
-            print(game_id + " + " + team + " combination already in database.")
-            continue
-        new_entry = TeamAvgStats(game_id=df.loc[idx, 'game_id'], szn=df.loc[idx, 'szn'], date=df.loc[idx, 'date'], 
-                              team=df.loc[idx, 'team'], passing_cmp=df.loc[idx, 'passing_cmp'], 
-                              passing_att=df.loc[idx, 'passing_att'], passing_cmp_prc=df.loc[idx, 'passing_cmp_prc'], 
-                              passing_yds=df.loc[idx, 'passing_yds'], passing_tds=df.loc[idx, 'passing_tds'], 
-                              passing_int=df.loc[idx, 'passing_int'], passing_rate=df.loc[idx, 'passing_rate'], 
-                              passing_sacks=df.loc[idx, 'passing_sacks'], passing_sack_yds_lost=df.loc[idx, 'passing_sack_yds_lost'], 
-                              passing_yds_att=df.loc[idx, 'passing_yds_att'], passing_net_yds_att=df.loc[idx, 'passing_net_yds_att'],
-                              rushing_att=df.loc[idx, 'rushing_att'], rushing_yds=df.loc[idx, 'rushing_yds'], 
-                              rushing_yds_att=df.loc[idx, 'rushing_yds_att'], rushing_tds=df.loc[idx, 'rushing_tds'], 
-                              scoring_tds=df.loc[idx, 'scoring_tds'], scoring_pts=df.loc[idx, 'scoring_pts'], 
-                              punts=df.loc[idx, 'punts'], punt_yds=df.loc[idx, 'punt_yds'], 
-                              third_down_conv=df.loc[idx, 'third_down_conv'], fourth_down_conv=df.loc[idx, 'fourth_down_conv'])
-        session.add(new_entry)
-    session.commit()
     
 def update_id_dicts() -> None:
     """
-        Updates the player_ids dict and game_ids dict, mostly used in development
+        Updates the player_ids dict and game_ids dict
     """
     config_path = os.environ.get("NFL_DATABASE")
     engine = create_engine(config_path)
@@ -151,8 +113,8 @@ def update_id_dicts() -> None:
     player_ids_path = os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/player_ids.pkl"
     game_ids_path = os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/game_ids.pkl"
     with Session() as session:
-            players = pd.read_sql("SELECT * from players", engine)
-            games = pd.read_sql("SELECT * from games", engine)
+            players = pd.read_sql_query(session.query(Player).statement, engine)
+            games = pd.read_sql_query(session.query(Game).statement, engine)
             for idx in range(len(players)):
                     player_ids[players.loc[idx, 'first_name'] + ' ' + players.loc[idx, 'last_name']] = players.loc[idx, 'player_id']
             for idx in range(len(games)):

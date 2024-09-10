@@ -9,7 +9,7 @@ import io
 
 # scrape team defensive data with year specified in the function
 def scrape_team_data() -> pd.DataFrame:
-    year = 2024
+    year = os.environ.get("NFL_SEASON")
     teams = ['crd', 'atl', 'buf', 'chi', 'cin', 'cle', 'dal', 'den', 'det', 'gnb', 'clt', 'kan', 'rai', 'sea', 'tam', 'rav',
             'car', 'jax', 'sdg', 'ram', 'mia', 'min', 'nwe', 'nor', 'nyg', 'nyj', 'phi', 'pit', 'sfo', 'oti', 'was', 'htx']
     all_teams = pd.DataFrame()

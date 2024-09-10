@@ -26,19 +26,35 @@ def nfl_player_etl():
         return extract_main()
 
     @task()
+    def clean():
+        from nfl_stuff.helper_functions.cleanPlayers import main as clean_main
+        print("Cleaning data...")
+        return clean_main()
+
+    @task()
+    def loadBasic():
+        from nfl_stuff.helper_functions.loadBasicPlayers import main as load_basic
+        print("Loading basic data...")
+        load_basic()
+        return "Database upload successful"
+    
+    @task()
     def transform():
         from nfl_stuff.helper_functions.transformPlayers import main as transform_main
         print("Transforming data...")
-        return transform_main()
-
+        transform_main()
+        return "Transformation successful"
+    
     @task()
-    def load():
-        from nfl_stuff.helper_functions.loadPlayers import main as load_main
-        print("Loading data...")
-        load_main()
+    def loadTransformed():
+        from nfl_stuff.helper_functions.loadTransformedPlayers import main as load_transformed
+        print("Loading transformed data...")
+        load_transformed()
         return "Database upload successful"
     extract()
+    clean()
+    loadBasic()
     transform()
-    load()
+    loadTransformed()
 
 player_dag = nfl_player_etl()

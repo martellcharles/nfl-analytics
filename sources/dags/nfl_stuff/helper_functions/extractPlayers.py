@@ -21,8 +21,8 @@ def pull_player_links() -> dict:
         Returns:
             current season player links for all players with recorded stats
     """
-    year = 2024
-    links_path = os.environ.get("AIRFLOW_HOME") + "/dags/data/player_links.pkl"
+    year = os.environ.get("NFL_SEASON")
+    links_path = os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/player_links.pkl"
     curr_year_links = {}
     with open(links_path, 'rb') as dickle:
         links = pickle.load(dickle)
@@ -144,7 +144,7 @@ def pull_position_data(player_links: dict) -> pd.DataFrame:
             A combined dataframe of all individual player season stats, cleaned and ready to load into database 
     """
     position_df = pd.DataFrame()
-    year = 2024
+    year = os.environ.get("NFL_SEASON")
     for player in player_links.values():
         url = "https://www.pro-football-reference.com/players/"+player[0]+"/"+player+"/gamelog/"+str(year)
         # 3 retries to load url

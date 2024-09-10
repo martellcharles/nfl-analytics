@@ -26,19 +26,35 @@ def nfl_team_etl():
         return extract_main()
 
     @task()
-    def transform():
-        from nfl_stuff.helper_functions.transformTeams import main as transform_main
-        print("Transforming data...")
-        return transform_main()
+    def clean():
+        from nfl_stuff.helper_functions.cleanTeams import main as clean_main
+        print("Cleaning data...")
+        return clean_main()
 
     @task()
-    def load():
-        from nfl_stuff.helper_functions.loadTeams import main as load_main
-        print("Loading data...")
-        load_main()
-        return "Database upload successful"
+    def loadBasic():
+        from nfl_stuff.helper_functions.loadBasicTeams import main as load_basic
+        print("Loading basic data...")
+        load_basic()
+        return "Database upload 1/2 successful"
+    
+    @task()
+    def transform():
+        from nfl_stuff.helper_functions.cleanTeams import main as transform_main
+        print("Transforming data...")
+        transform_main()
+        return "Transformation successful"
+    
+    @task()
+    def loadTransformed():
+        from nfl_stuff.helper_functions.loadTransformedTeams import main as load_transformed
+        print("Loading transformed data...")
+        load_transformed()
+        return "Database upload 2/2 successful"
     extract()
+    clean()
+    loadBasic()
     transform()
-    load()
+    loadTransformed
 
 team_dag = nfl_team_etl()

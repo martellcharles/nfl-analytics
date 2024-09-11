@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from databaseModels import *
+from nfl_stuff.helper_functions.databaseModels import *
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import pickle
@@ -68,6 +68,8 @@ def create_player_career_avgs_df(game_stats: pd.DataFrame, player_ids: dict) -> 
     all_player_avgs = pd.DataFrame()
     for id in player_ids.values():
         df = game_stats.loc[game_stats['player_id'] == id,:]
+        if len(df) == 1:
+            return
         avgs = pd.DataFrame()
         for col in df.columns:
             if col in ['game_id', 'szn', 'date', 'player_id', 'team']:
@@ -106,13 +108,14 @@ def create_player_career_avgs_df(game_stats: pd.DataFrame, player_ids: dict) -> 
                 avgs[col] = avg_col
         all_player_avgs = pd.concat([all_player_avgs, avgs])
     all_player_avgs.reset_index(drop=True, inplace=True)
-    all_player_avgs.to_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/career_avgs.csv")
+    all_player_avgs.to_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/career_avgs.csv", index=False)
 
-def create_player_season_avgs_df(game_stats: pd.DataFrame, season: int, player_ids: dict) -> None:
+def create_player_season_avgs_df(game_stats: pd.DataFrame, player_ids: dict) -> None:
     all_player_avgs = pd.DataFrame()
     for id in player_ids.values():
-        df = game_stats.loc[(game_stats['player_id'] == id) & (game_stats['szn'] == season),:]
-        df = df_all_years.loc[df_all_years['szn'] == year, :]
+        df = game_stats.loc[game_stats['player_id'] == id,:]
+        if len(df) == 1:
+            return
         avgs = pd.DataFrame()
         for col in df.columns:
             if col in ['game_id', 'szn', 'date', 'player_id', 'team']:
@@ -151,12 +154,14 @@ def create_player_season_avgs_df(game_stats: pd.DataFrame, season: int, player_i
                 avgs[col] = avg_col
             all_player_avgs = pd.concat([all_player_avgs, avgs])
     all_player_avgs.reset_index(drop=True, inplace=True)
-    all_player_avgs.to_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/season_avgs.csv")
+    all_player_avgs.to_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/season_avgs.csv", index=False)
 
 def create_player_career_total_df(game_stats: pd.DataFrame, player_ids: dict) -> None:
     all_player_avgs = pd.DataFrame()
     for id in player_ids.values():
         df = game_stats.loc[game_stats['player_id'] == id,:]
+        if len(df) == 1:
+            return
         totals = pd.DataFrame()
         for col in df.columns:
             if col in ['game_id', 'szn', 'date', 'player_id', 'team']:
@@ -195,7 +200,7 @@ def create_player_career_total_df(game_stats: pd.DataFrame, player_ids: dict) ->
                 totals[col] = total_col
         all_player_total = pd.concat([all_player_total, totals])
     all_player_total.reset_index(drop=True, inplace=True)
-    all_player_total.to_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/career_totals.csv")
+    all_player_total.to_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/career_totals.csv", index=False)
 
 def main() -> None:
     season = os.environ.get("NFL_SEASON")
@@ -209,8 +214,8 @@ def main() -> None:
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine, autoflush=False)
     with Session() as session:
-        game_stats = pd.read_sql_query(session.query(GameStats).statement, engine)
+        game_stats = pd.read_sql_query(session.query(GameStats).filter_by(szn=season).statement, engine)
     create_player_career_avgs_df(game_stats, player_ids)
-    create_player_season_avgs_df(game_stats, season, player_ids)
+    create_player_season_avgs_df(game_stats, player_ids)
     create_player_career_total_df(game_stats, player_ids)
     

@@ -4,7 +4,7 @@ This module provides functions for uploading the transformed player average data
 
 import pandas as pd
 import numpy as np
-from databaseModels import *
+from nfl_stuff.helper_functions.databaseModels import *
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import pickle
@@ -57,8 +57,12 @@ def main() -> None:
     Returns:
         Nothing, the data is uploaded to the mysql database. 
     """
+    airflow_home = os.environ.get("AIRFLOW_HOME")
+    # we do not calculate averages until week 2
+    if not os.path.isfile(airflow_home + "/dags/nfl_stuff/data/team_avgs.csv"):
+        return
     # load transformed data
-    team_avg_stats = pd.read_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/team_avgs.csv")
+    team_avg_stats = pd.read_csv(airflow_home + "/dags/nfl_stuff/data/team_avgs.csv")
     # Connect to database
     config_path = os.environ.get("NFL_DATABASE")
     engine = create_engine(config_path)
@@ -66,3 +70,6 @@ def main() -> None:
     Session = sessionmaker(bind=engine, autoflush=False)
     with Session() as session:
         update_avg_team_stats(engine, session, team_avg_stats)
+    # clean up csvs to ensure dag doesn't use old data in next run
+    os.remove(airflow_home + "/dags/nfl_stuff/data/team_avgs.csv")
+    engine.dispose()

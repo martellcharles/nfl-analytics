@@ -39,9 +39,6 @@ def fix_snap_cols(df: pd.DataFrame, col_names: list) -> None:
                 else:
                     df.loc[idx, tup] = np.nan
 
-# occasionally a player will have two rows of data for the same week, we need to make changes to this function to
-# ensure that we clean those up
-
 def clean_games(df: pd.DataFrame) -> None:
     """
     Further cleans the dataframe of game stats to match database format.
@@ -52,8 +49,12 @@ def clean_games(df: pd.DataFrame) -> None:
     Returns:
         Nothing, the dataframe is edited in place.. 
     """
+    
+    # changes team to abbreviation to lowercase to match db format
     df.loc[:,('Game Info','Tm')] = [team.lower() if type(team)==str else np.nan for team in df['Game Info']['Tm']]
     df.loc[:,('Game Info','Opp')] = [opp.lower() if type(opp)==str else np.nan for opp in df['Game Info']['Opp']]
+    
+    # ensures columns have all numeric values to enter into db, occasionally has 0s as strings
     for stat in ['Passing', 'Rushing', 'Receiving', 'Fumbles', 'Scoring']:
         for col in df[stat].columns:
             df[(stat,col)] = pd.to_numeric(df[(stat,col)], errors='coerce')
@@ -61,30 +62,38 @@ def clean_games(df: pd.DataFrame) -> None:
     fix_snap_cols(df, [('Off. Snaps', 'Num'), ('Off. Snaps', 'Pct'), ('ST Snaps', 'Num'), ('ST Snaps', 'Pct'), 
                        ('Def. Snaps', 'Num'), ('Def. Snaps', 'Pct')])
     drop = []
+    
+    # occasionally players will have two rows for 1 week, one row states inactive and the other includes stats
+    # this removes the duplicate rows which state the player was inactive even though they played
     for idx in range(1,len(df)):
         if df.loc[idx, ('Game Info', 'Week')] == df.loc[idx-1,('Game Info', 'Week')]:
             drop.append(idx)
     df.drop(drop, inplace=True)
+    
+    # this extract function would sometimes gather player data twice if they had stats in passing and rushing or receiving
+    # this loop would delete those duplicate rows, but has since been fixed in the extract function
+    # for player in df[('Player Info', 'Name')].unique():
+    #     indices = df.loc[df[('Player Info', 'Name')] == player,:].index
+    #     drop = []
+    #     for i,idx in enumerate(indices):
+    #         if 'Games' in df.loc[idx,('Game Info', 'Date')]:
+    #             i+=1
+    #             drop = [j for j in indices[i:]]
+    #             break
+    #         elif df.loc[idx, ('Game Info', 'Week')] == df.loc[indices[i-1],('Game Info', 'Week')] and len(indices) > 1:
+    #             drop = [indices[i-1]]
+    #             break
+    #     try:
+    #         df.drop(drop, inplace=True)
+    #         df.reset_index(drop=True, inplace=True)
+    #     except:
+    #         raise RuntimeError(player + " failed!")
+    
+    # resets index and replaces null values with 0
     df.reset_index(drop=True, inplace=True)
-    for player in df[('Player Info', 'Name')].unique():
-        indices = df.loc[df[('Player Info', 'Name')] == player,:].index
-        drop = []
-        for i,idx in enumerate(indices):
-            if 'Games' in df.loc[idx,('Game Info', 'Date')]:
-                i+=1
-                drop = [j for j in indices[i:]]
-                break
-            elif df.loc[idx, ('Game Info', 'Week')] == df.loc[indices[i-1],('Game Info', 'Week')] and len(indices) > 1:
-                drop = [indices[i-1]]
-                break
-        try:
-            df.drop(drop, inplace=True)
-            df.reset_index(drop=True, inplace=True)
-        except:
-            raise RuntimeError(player + " failed!")
     df.fillna(0, inplace=True)
+    df.to_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/cleaned_player_data.csv", index=False)
 
 def main() -> pd.DataFrame:
-    player_data = pd.read_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/player_data.csv")
+    player_data = pd.read_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/player_data.csv", header=[0, 1])
     clean_games(player_data)
-    player_data.to_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/cleaned_player_data.csv")

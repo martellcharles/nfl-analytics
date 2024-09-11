@@ -4,8 +4,7 @@ This module provides functions for uploading the cleaned player data to the data
 
 import pandas as pd
 import numpy as np
-import configparser
-from databaseModels import *
+from nfl_stuff.helper_functions.databaseModels import *
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import pickle
@@ -24,35 +23,35 @@ def update_players(engine, session, df: pd.DataFrame, player_ids: dict) -> None:
     Returns:
         Nothing, the data is uploaded to the mysql database. 
     """
+    season = os.environ.get("NFL_SEASON")
     players = pd.read_sql_query(session.query(Player).statement, engine)
     curr_player_ids = {}
     if len(players) == 0:
         curr_id = 1
     else:
-        curr_id = max(players.loc[:,'game_id']) + 1
+        curr_id = max(players.loc[:,'player_id']) + 1
     for player in df[('Player Info', 'Name')].unique():
         first_name = player.split(' ',1)[0]
         last_name = player.split(' ',1)[1]
-        if player_ids.get(first_name + ' ' + last_name):
-            player_id = player_ids.get(first_name + ' ' + last_name)
+        if player_ids.get(player):
+            player_id = player_ids.get(player)
             update = session.query(Player).filter_by(player_id=player_id).one()
-            update.last_year = df.loc[df[('Player Info', 'Name')] == player, ('Game Info', 'szn')].iloc[0]
+            update.last_year = season
             curr_player_ids[player] = player_id
         else:
             position = df.loc[df[('Player Info', 'Name')] == player, ('Player Info', 'Pos')].iloc[0]
-            first_year = df.loc[df[('Player Info', 'Name')] == player, ('Game Info', 'szn')].iloc[0]
-            new_entry = Player(player_id=curr_id, first_name=first_name, last_name=last_name, position=position, first_year=first_year, last_year=first_year)
-            player_ids[first_name + ' ' + last_name] = curr_id
-            curr_player_ids = curr_id
+            new_entry = Player(player_id=curr_id, first_name=first_name, last_name=last_name, position=position, first_year=season, last_year=season)
+            player_ids[player] = curr_id
+            curr_player_ids[player] = curr_id
             curr_id += 1
             session.add(new_entry)
     session.commit()
     player_ids_path = os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/player_ids.pkl"
-    curr_year_players_path = os.environ.get("AIRFLOW_HOME") + "/dags/data/curr_year_players.pkl"
+    curr_year_players_path = os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/curr_year_players.pkl"
     with open(player_ids_path, 'wb') as dickle:
         pickle.dump(player_ids, dickle)
     with open(curr_year_players_path, 'wb') as dickle:
-        pickle.dump(curr_year_ids, dickle)
+        pickle.dump(curr_player_ids, dickle)
 
 def update_games(engine, session, df: pd.DataFrame, game_ids: dict) -> None:
     """
@@ -73,6 +72,7 @@ def update_games(engine, session, df: pd.DataFrame, game_ids: dict) -> None:
     else:
         curr_id = max(games.loc[:,'game_id']) + 1
     for idx in range(len(df)):
+        # skips past the season summary data row
         if 'Games' in df.loc[idx, ('Game Info', 'Date')]:
             continue
         if df.loc[idx, ('Game Info', 'H/A')] == 1:
@@ -160,19 +160,19 @@ def update_season_stats(engine, session, df: pd.DataFrame, player_ids: dict) -> 
     Returns:
         Nothing, the data is uploaded to the mysql database. 
     """
-    all_szn_stats = pd.read_sql_query(session.query(SeasonStats).statement, engine)
+    season = os.environ.get("NFL_SEASON")
+    curr_szn_stats = pd.read_sql_query(session.query(SeasonStats).filter_by(szn=season).statement, engine)
     for player in df[('Player Info', 'Name')].unique():
         player_id = player_ids.get(player)
         idx = df.loc[df[('Player Info', 'Name')]==player,:].index[-1]
         if 'Games' not in df.loc[idx, ('Game Info', 'Date')]:
-            gp = len(df.loc[df[('Player Info', 'Name')]==player,:]) - 1
-        else:
-            gp = int(df.loc[idx, ('Game Info', 'Date')].split(' ')[0])
+            raise RuntimeError(player + 'data not formatted correctly')
+        gp = int(df.loc[idx, ('Game Info', 'Date')].split(' ')[0])
+        # change this to check for multiple teams throughout season
         team = df.loc[df[('Player Info', 'Name')]==player,('Game Info', 'Tm')].iloc[0]
-        szn = df.loc[idx, ('Game Info', 'szn')]
-        szn_stats = all_szn_stats.loc[(all_szn_stats['szn'] == szn) & (all_szn_stats['player_id'] == str(player_id)), :]
+        player_szn_stats = curr_szn_stats.loc[all_szn_stats['player_id'] == str(player_id), :]
         if len(szn_stats) == 0:
-            new_entry = SeasonStats(player_id=player_id, szn=szn, 
+            new_entry = SeasonStats(player_id=player_id, szn=season, 
                                     player_name=player, team=team, games_played=gp,
                                     passing_cmp=df.loc[idx, ('Passing', 'Cmp')], passing_att=df.loc[idx, ('Passing', 'Att')], 
                                     passing_cmp_prc=df.loc[idx, ('Passing', 'Cmp%')], passing_yds=df.loc[idx, ('Passing', 'Yds')], 
@@ -239,12 +239,11 @@ def update_career_stats(engine, session, df: pd.DataFrame, player_ids: dict) -> 
         player_stats = career_stats.loc[career_stats['player_id']==player_id,:]
         idx = df.loc[df[('Player Info', 'Name')]==player,:].index[-1]
         if 'Games' not in df.loc[idx, ('Game Info', 'Date')]:
-            gp = len(df.loc[df[('Player Info', 'Name')]==player,:]) - 1
-        else:
-            gp = int(df.loc[idx, ('Game Info', 'Date')].split(' ')[0])
+            raise RuntimeError(player + 'data not formatted correctly')
+        idk = df.loc[df[('Player Info', 'Name')]==player,:].index[-2]
         if len(player_stats) == 0:
             new_entry = CareerStats(player_id=player_id, player_name=player, 
-                                    games_played=gp,
+                                    games_played=1,
                                     passing_cmp=df.loc[idx, ('Passing', 'Cmp')], passing_att=df.loc[idx, ('Passing', 'Att')], 
                                     passing_cmp_prc=df.loc[idx, ('Passing', 'Cmp%')], passing_yds=df.loc[idx, ('Passing', 'Yds')], 
                                     passing_tds=df.loc[idx, ('Passing', 'TD')], passing_int=df.loc[idx, ('Passing', 'Int')], 
@@ -261,7 +260,7 @@ def update_career_stats(engine, session, df: pd.DataFrame, player_ids: dict) -> 
             session.add(new_entry)
         else:
             update = session.query(CareerStats).filter_by(player_id=player_id).one()
-            update.games_played+=gp
+            update.games_played+=1
             if df.loc[idx, ('Passing', 'Att')] != 0:
                 update.passing_att+=df.loc[idx, ('Passing', 'Att')]
                 update.passing_cmp+=df.loc[idx, ('Passing', 'Cmp')]
@@ -322,9 +321,11 @@ def update_career_stats(engine, session, df: pd.DataFrame, player_ids: dict) -> 
     
 def update_id_dicts() -> None:
     """
-        Updates the player_ids dict and game_ids dict
+        Updates the player_ids dict and game_ids dict from database
     """
     config_path = os.environ.get("NFL_DATABASE")
+    player_ids_path = os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/player_ids.pkl"
+    game_ids_path = os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/game_ids.pkl"
     engine = create_engine(config_path)
     # Create the tables / session
     Base.metadata.create_all(engine)
@@ -354,7 +355,7 @@ def main() -> None:
     Returns:
         Nothing, the data is uploaded to the mysql database. 
     """
-    df = pd.read_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/cleaned_player_data.csv")
+    df = pd.read_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/cleaned_player_data.csv", header=[0,1])
     update_id_dicts()
     # load player and game ids
     player_ids_path = os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/player_ids.pkl"
@@ -372,6 +373,7 @@ def main() -> None:
     with Session() as session:
         update_players(engine, session, df, player_ids)
         update_games(engine, session, df, game_ids)
+        # inserting new players and games updates these dicts, must re-read them to get those updates
         with open(player_ids_path, 'rb') as dickle:
             player_ids = pickle.load(dickle)
         with open(game_ids_path, 'rb') as dickle:
@@ -379,7 +381,4 @@ def main() -> None:
         update_game_stats(session, df, game_ids, player_ids)
         update_season_stats(engine, session, df, player_ids)
         update_career_stats(engine, session, df, player_ids)
-        update_avg_stats(engine, session, df, 'career_avg_stats')
-        update_avg_stats(engine, session, df, 'season_avg_stats')
-        update_career_totals(engine, session, df)
     engine.dispose()

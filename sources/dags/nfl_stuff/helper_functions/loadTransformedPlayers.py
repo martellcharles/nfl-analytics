@@ -4,7 +4,7 @@ This module provides functions for uploading the transformed player average data
 
 import pandas as pd
 import numpy as np
-from databaseModels import *
+from nfl_stuff.helper_functions.databaseModels import *
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import pickle
@@ -113,11 +113,15 @@ def main() -> None:
     Returns:
         Nothing, the data is uploaded to the mysql database. 
     """
-    career_total_stats = pd.read_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/career_totals.csv")
-    career_avg_stats = pd.read_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/career_avgs.csv")
-    season_avg_stats = pd.read_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/season_avgs.csv")
+    airflow_home = os.environ.get("AIRFLOW_HOME")
+    # we do not calculate averages until week 2
+    if not os.path.isfile(airflow_home + "/dags/nfl_stuff/data/player_data.csv"):
+        return
+    career_total_stats = pd.read_csv(airflow_home + "/dags/nfl_stuff/data/career_totals.csv", header=[0,1])
+    career_avg_stats = pd.read_csv(airflow_home + "/dags/nfl_stuff/data/career_avgs.csv", header=[0,1])
+    season_avg_stats = pd.read_csv(airflow_home + "/dags/nfl_stuff/data/season_avgs.csv", header=[0,1])
     # load current player ids
-    curr_year_players_path = os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/curr_year_players.pkl"
+    curr_year_players_path = airflow_home + "/dags/nfl_stuff/data/curr_year_players.pkl"
     with open(curr_year_players_path, 'rb') as dickle:
         player_ids = pickle.load(dickle)
     # Connect to database
@@ -129,4 +133,10 @@ def main() -> None:
         update_career_totals(engine, session, career_total_stats)
         update_avg_stats(engine, session, career_avg_stats, 'career_avg_stats')
         update_avg_stats(engine, session, season_avg_stats, 'season_avg_stats')
+    # clean up csvs to ensure dag doesn't use old data in next run
+    os.remove(airflow_home + "/dags/nfl_stuff/data/player_data.csv")
+    os.remove(airflow_home + "/dags/nfl_stuff/data/career_totals.csv")
+    os.remove(airflow_home + "/dags/nfl_stuff/data/career_avgs.csv")
+    os.remove(airflow_home + "/dags/nfl_stuff/data/season_avgs.csv")
+    engine.dispose()
     

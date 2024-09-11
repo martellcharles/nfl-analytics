@@ -6,10 +6,13 @@ import requests
 import time
 from bs4 import BeautifulSoup
 import io
+import os
 
 # scrape team defensive data with year specified in the function
-def scrape_team_data() -> pd.DataFrame:
+def main() -> None:
     year = os.environ.get("NFL_SEASON")
+    print(type(year))
+    year = int(year)
     teams = ['crd', 'atl', 'buf', 'chi', 'cin', 'cle', 'dal', 'den', 'det', 'gnb', 'clt', 'kan', 'rai', 'sea', 'tam', 'rav',
             'car', 'jax', 'sdg', 'ram', 'mia', 'min', 'nwe', 'nor', 'nyg', 'nyj', 'phi', 'pit', 'sfo', 'oti', 'was', 'htx']
     all_teams = pd.DataFrame()
@@ -46,8 +49,4 @@ def scrape_team_data() -> pd.DataFrame:
         df.loc[:, ('Game Info', 'Date')] = [str(year+1) + '-' + str(months_dict.get(i.split(" ")[0])) + '-' + i.split(" ")[1] if months_dict.get(i.split(" ")[0])<3 else str(year) + '-' + str(months_dict.get(i.split(" ")[0])) + '-' + i.split(" ")[1] for i in df['Game Info']['Date']]
         all_teams = pd.concat([all_teams, df])
     all_teams.reset_index(drop=True, inplace=True)
-    return all_teams
-
-def main() -> pd.DataFrame:
-    team_data = scrape_team_data()
-    team_data.to_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/team_data.csv")
+    all_teams.to_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/team_data.csv", index=False)

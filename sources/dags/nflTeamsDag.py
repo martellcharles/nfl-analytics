@@ -18,7 +18,6 @@ from airflow.utils.dates import days_ago
     tags=['etl'],
 )
 def nfl_team_etl():
-    import pandas as pd
     @task()
     def extract():
         from nfl_stuff.helper_functions.extractTeams import main as extract_main
@@ -33,6 +32,7 @@ def nfl_team_etl():
 
     @task()
     def loadBasic():
+        from nfl_stuff.helper_functions import databaseModels
         from nfl_stuff.helper_functions.loadBasicTeams import main as load_basic
         print("Loading basic data...")
         load_basic()
@@ -40,6 +40,7 @@ def nfl_team_etl():
     
     @task()
     def transform():
+        from nfl_stuff.helper_functions import databaseModels
         from nfl_stuff.helper_functions.cleanTeams import main as transform_main
         print("Transforming data...")
         transform_main()
@@ -47,14 +48,20 @@ def nfl_team_etl():
     
     @task()
     def loadTransformed():
+        from nfl_stuff.helper_functions import databaseModels
         from nfl_stuff.helper_functions.loadTransformedTeams import main as load_transformed
         print("Loading transformed data...")
         load_transformed()
         return "Database upload 2/2 successful"
-    extract()
-    clean()
-    loadBasic()
-    transform()
-    loadTransformed
+    
+    # define tasks
+    extract_task = extract()
+    clean_task = clean()
+    load_basic_task = loadBasic()
+    transform_task = transform()
+    load_transformed_task = loadTransformed()
+
+    # set the order of tasks
+    extract_task >> clean_task >> load_basic_task >> transform_task >> load_transformed_task
 
 team_dag = nfl_team_etl()

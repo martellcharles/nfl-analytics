@@ -21,7 +21,14 @@ def clean_team_df(df: pd.DataFrame) -> None:
     Returns:
         Nothing, the dataframe is edited in place.. 
     """
+    df.fillna(0, inplace=True)
+    drop = []
     for idx in range(len(df)):
+        # extractTeams() scrapes all weeks that have not been played yet, this drops those weeks
+        # assumes no game will ever end 0-0, which is possible but incredibly unlikely
+        if (df.loc[idx, ('Score', 'Tm')] == 0) and (df.loc[idx, ('Score', 'Opp')] == 0):
+            drop.append(idx)
+            continue
         # adds 0s to single digit months and days to match formatting for game_id key
         if len(df.loc[idx, ('Game Info', 'Date')].split('-')[1]) == 1:
             df.loc[idx, ('Game Info', 'Date')] = df.loc[idx, ('Game Info', 'Date')].split('-')[0] + '-0' + df.loc[idx, ('Game Info', 'Date')].split('-')[1] + '-' + df.loc[idx, ('Game Info', 'Date')].split('-')[2]
@@ -85,9 +92,10 @@ def clean_team_df(df: pd.DataFrame) -> None:
             'Houston Texans': 'hou', 'Los Angeles Chargers': 'lac', 'Las Vegas Raiders': 'lvr', 'Washington Football Team': 'was', 
             'Washington Commanders': 'was', 'Los Angeles Rams1': 'ram'}
         df.loc[idx, ('Game Info', 'Opp')] = teams_dict.get(df.loc[idx, ('Game Info', 'Opp')])
-    df.fillna(0, inplace=True)
+    df.drop(drop, inplace=True)
+    df.reset_index(drop=True, inplace=True)
+    df.to_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/cleaned_team_data.csv", index=False)
     
 def main() -> pd.DataFrame:
-    team_data = pd.read_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/team_data.csv")
+    team_data = pd.read_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/team_data.csv", header=[0,1])
     clean_team_df(team_data)
-    team_data.to_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/cleaned_team_data.csv")

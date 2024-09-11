@@ -6,7 +6,7 @@ const router = express.Router();
 
 router.get('/season-leaders', async (req, res) => {
   try {
-    const year = 2023; // Hardcoded for 2023, but you could make this a query parameter
+    const year = 2024; // hardcoded for 2024, but should make this a query parameter
 
     const leaders = await SeasonStats.findAll({
       attributes: [
@@ -22,7 +22,7 @@ router.get('/season-leaders', async (req, res) => {
       raw: true
     });
 
-    // Now fetch the player details for each leader
+    // fetch the player details for each leader
     const passingLeader = await SeasonStats.findOne({
       where: { szn: year, passing_yds: leaders[0].max_passing_yds },
       attributes: ['player_name', 'team', 'passing_yds'],

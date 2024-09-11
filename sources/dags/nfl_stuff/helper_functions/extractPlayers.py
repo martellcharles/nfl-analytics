@@ -116,6 +116,7 @@ def clean_player_df(df: pd.DataFrame) -> None:
     if len(results) == 1:
         df.loc[1] = df.loc[0].copy()
         df.loc[1, ('Game Info', 'Date')] = '1 Games'
+        df.loc[1, ('Game Info', 'Week')] = 0
     # loops through result column which is string, splits up the string and converst them to ints
     for i in range(0, len(df) - 1):
         result.append(results[i][0])
@@ -133,7 +134,7 @@ def clean_player_df(df: pd.DataFrame) -> None:
     df.loc[:, ('Game Info', 'H/A')] = [0 if i == "@" else 1 for i in df['Game Info']['H/A']]
 
 # saves player data into massive dataframe
-def pull_position_data(player_links: dict) -> pd.DataFrame:
+def pull_position_data(player_links: dict) -> None:
     """
         Takes player links, scrapes the current season data of that player, cleans, and combines those dataframes
         
@@ -188,9 +189,12 @@ def pull_position_data(player_links: dict) -> pd.DataFrame:
             position_df = pd.concat([position_df, current_df])
         except:
             raise RuntimeError("Couldn't clean df: " + url)
-    return position_df
+    position_df.to_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/player_data.csv", index=False)
 
-def main() -> pd.DataFrame:
+def main() -> None:
+    # if dag fails after this module, we don't need to re-run this function and wait ~20 mins
+    # once dag is complete this file is deleted
+    if os.path.isfile(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/player_data.csv"):
+        return
     links = pull_player_links()
-    player_data = pull_position_data(links)
-    player_data.to_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/player_data.csv")
+    pull_position_data(links)

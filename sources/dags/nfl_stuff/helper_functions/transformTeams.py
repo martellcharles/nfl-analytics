@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from databaseModels import *
+from nfl_stuff.helper_functions.databaseModels import *
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import pickle
@@ -67,7 +67,9 @@ def calculate_net_yds_att(pass_yds: pd.Series, sack_yds: pd.Series, passing_att:
 def create_team_avg_df(team_stats: pd.DataFrame, season: int) -> None:
     all_team_avgs = pd.DataFrame()
     for team in team_stats['team'].unique():
-        df = team_stats.loc[(team_stats['team'] == team) & (df_all_years['szn'] == season), :]
+        df = team_stats.loc[team_stats['team'] == team, :]
+        if len(team_stats) == 1:
+            return
         avgs = pd.DataFrame()
         for col in df.columns:
             if col in ['game_id', 'szn', 'date', 'team']:
@@ -103,7 +105,7 @@ def create_team_avg_df(team_stats: pd.DataFrame, season: int) -> None:
                 avgs[col] = avg_col
         all_team_avgs = pd.concat([all_team_avgs, avgs])
     all_team_avgs.reset_index(drop=True, inplace=True)
-    all_team_avgs.to_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/team_avgs.csv")
+    all_team_avgs.to_csv(os.environ.get("AIRFLOW_HOME") + "/dags/nfl_stuff/data/team_avgs.csv", index=False)
 
 def main() -> None:
     season = os.environ.get("NFL_SEASON")
@@ -113,6 +115,6 @@ def main() -> None:
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine, autoflush=False)
     with Session() as session:
-        team_stats = pd.read_sql_query(session.query(TeamStats).statement, engine)
+        team_stats = pd.read_sql_query(session.query(TeamStats).filter_by(szn=season).statement, engine)
     create_team_avg_df(team_stats, season)
     
